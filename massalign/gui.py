@@ -136,7 +136,7 @@ class BasicGUI(GUI):
 		self.root.grid_columnconfigure(0, weight=1)
 		self.root.wm_title("Alignment Visualizer")
 		self.root.config(background='#FFFFFF')
-		self.root.geometry('1250x600+0+0')
+		self.root.geometry('1250x800+0+0')
 		self.root.resizable(True, True)
 
 #A canvas with dynamic size:
@@ -257,7 +257,7 @@ class DisplayFrame(Frame):
 		self.max_chars_per_line = 70
 		self.offset_between_paragraphs = 25
 		self.separation_between_lines = 8
-		self.font_size = 10
+		self.font_size = 8
 		self.marker_radius = 7
 		self.alignment_line_width = 4
 		self.word_rectangle_size = 60

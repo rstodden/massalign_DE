@@ -1,5 +1,6 @@
 import codecs
 from urllib2 import urlopen
+from nltk import word_tokenize
 
 class FileReader:
 	"""
@@ -50,5 +51,24 @@ class FileReader:
 				sentences.append(sentence)
 			f.close()
 		return sentences
-		
-	
+
+	def split_sentences(self, data):
+		sent = []
+		for par in data:
+			sent.append(par.split("\n"))
+		return sent
+
+
+	def getSplitParagraphs(self):
+		f = codecs.open(self.path, encoding='utf8')
+		paragraphs = self.split_sentences(f)
+		split_paragraphs = []
+		for paragraph in paragraphs:
+			par = []
+			for sentence in paragraph:
+				for token in word_tokenize(sentence.lower()):
+					if token not in self.stop_list:
+						par.append(token)
+			split_paragraphs.append(par)
+		f.close()
+		return split_paragraphs

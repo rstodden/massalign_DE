@@ -3,6 +3,14 @@ import numpy as np
 import gensim
 from massalign.util import FileReader
 
+
+from gensim.models.doc2vec import Doc2Vec, TaggedDocument
+from scipy import spatial
+from nltk.corpus import stopwords
+from nltk import word_tokenize
+import string
+
+
 class SimilarityModel:
 
 	__metaclass__ = ABCMeta
@@ -185,4 +193,235 @@ class TFIDFModel(SimilarityModel):
 		sentences = set(p)
 		return sentences
 			
+
+class W2VModel(SimilarityModel):
+	def __init__(self, input_files=[]):
+		self.stoplist = stopwords.words('english') + list(string.punctuation)
+		self.w2v, self.dictionary = self.getW2Vmodel(input_files)
+		self.index2word_set = set(self.w2v.wv.index2word)
 		
+	def getW2Vmodel(self, input_files=[]):
+
+		sentences = []
+		for file in input_files:
+			reader = FileReader(file, self.stoplist)
+			sentences.extend(reader.getSplitSentences())
+		
+	
+		dictionary = gensim.corpora.Dictionary(sentences)
+	
+		w2v = gensim.models.Word2Vec()
+		w2v.build_vocab(sentences, progress_per=10000)
+		w2v.train(sentences, total_examples=w2v.corpus_count, epochs=30, report_delay=1)
+		w2v.init_sims(replace=True)
+
+		return w2v, dictionary
+	
+	def getSimilarityMapBetweenSentencesOfParagraphs(self, p1, p2):
+
+		sentences = list(self.getSentencesFromParagraph(p1).union(self.getSentencesFromParagraph(p2)))
+		
+
+		sentence_similarities, sentence_indexes = self.getW2VControllers(sentences)
+
+		return sentence_similarities, sentence_indexes
+		
+	def getSimilarityMapBetweenParagraphsOfDocuments(self, p1s=[], p2s=[]):
+		sentences = list(self.getSentencesFromParagraphs(p1s).union(self.getSentencesFromParagraphs(p2s)))
+
+		sentence_similarities, sentence_indexes = self.getW2VControllers(sentences)
+
+		paragraph_similarities = list(np.zeros((len(p1s), len(p2s))))
+		for i, p1 in enumerate(p1s):
+			for j, p2 in enumerate(p2s):
+				values = []
+				for sent1 in p1:
+					for sent2 in p2:
+						values.append(sentence_similarities[sentence_indexes[sent1]][sentence_indexes[sent2]])
+				paragraph_similarities[i][j] = np.max(values)
+
+		return paragraph_similarities
+
+	def avg_sentence_vector(self, words, num_features):
+		featureVec = np.zeros((num_features,), dtype="float32")
+		nwords = 0
+
+		for word in words:
+			if word in self.index2word_set:
+				nwords = nwords+1
+				featureVec = np.add(featureVec, self.w2v[word])
+
+		if nwords>0:
+			featureVec = np.divide(featureVec, nwords)
+		return featureVec
+
+	def getW2VControllers(self, sentences):
+	
+		sent_indexes = {}
+		for i, s in enumerate(sentences):
+			sent_indexes[s] = i
+
+		texts = [[word for word in list(gensim.utils.tokenize(sentence)) if word not in self.stoplist] for sentence in sentences]
+
+		sentence_similarities = []
+		for j in range(0, len(sentences)):
+			sims = []
+			s1_afv = self.avg_sentence_vector(words=texts[j], num_features=100)
+			for k in range(0, len(sentences)):
+				s2_afv = self.avg_sentence_vector(words=texts[k], num_features=100)
+				sim = 1 - spatial.distance.cosine(s1_afv, s2_afv)
+				sims.append(sim)
+			sentence_similarities.append(sims)
+		
+		return sentence_similarities, sent_indexes
+	
+	def getTextSimilarity(self, buffer1, buffer2):
+		vec1 = buffer1.split()
+		vec2 = buffer2.split()
+		
+
+		s1_afv = self.avg_sentence_vector(words=vec1, num_features=100)
+		s2_afv = self.avg_sentence_vector(words=vec2, num_features=100)
+
+		similarity = 1 - spatial.distance.cosine(s1_afv, s2_afv)
+		return similarity
+	
+	def getSentencesFromParagraphs(self, ps):
+		sentences = set([])
+		for p in ps:
+			psents = self.getSentencesFromParagraph(p)
+			sentences.update(psents)
+
+		return sentences
+	
+	def getSentencesFromParagraph(self, p):
+		sentences = set(p)
+		return sentences		
+
+
+class D2VModel(SimilarityModel):
+	"""
+	Implements a typical gensim Doc2Vec model for MASSAlign.
+			
+	* *Parameters*:
+		* **input_files**: A set of file paths containing text from which to extract TFIDF weight values.
+		* **stop_list_file**: A path to a file containing a list of stop-words.
+	"""
+
+	def __init__(self, input_files=[], vector_size=100, window_size=10, min_count=2, epochs=200, infer_epochs=200, dm=0):
+		self.stoplist = stopwords.words('english') + list(string.punctuation)
+		self.vector_size = vector_size
+		self.window_size = window_size
+		self.min_count = min_count
+		self.epochs = epochs
+		if(dm in [0, 1]):
+			self.dm = dm
+		else:
+			self.dm = 0
+		self.infer_epochs = infer_epochs
+		self.d2v, self.paragraphs, self.documents = self.getD2Vmodel(input_files)
+		self.paragraph_similarities = None 
+
+	def getSimMapPar(self):
+		return self.paragraph_similarities
+
+	def getD2Vmodel(self, input_files=[]):
+		"""
+		Trains a gensim Doc2Vec model.
+				
+		* *Parameters*:
+			* **input_files**: A set of file paths containing text from which to extract TFIDF weight values.
+		* *Output*:
+			* **tfidf**: A trained gensim models.TfidfModel instance.
+			* **dictionary**: A trained gensim.corpora.Dictionary instance.
+		"""
+
+		#Create text sentence set for training:
+		paragraphs = []
+		for file in input_files:
+			reader = FileReader(file, self.stoplist)
+			paragraphs.extend(reader.getSplitParagraphs())
+		
+		#Train Word2Vec model:
+		documents = [TaggedDocument(doc, [i]) for i, doc in enumerate(paragraphs)]
+
+		d2v = Doc2Vec(vector_size=self.vector_size, window=self.window_size, min_count=self.min_count, epochs=self.epochs, dm=self.dm, dbow_words=1, sample=10**-3, workers=8)
+		d2v.build_vocab(documents)
+		d2v.train(documents, total_examples=d2v.corpus_count, epochs=d2v.epochs)
+		d2v.init_sims(replace=True)
+
+		return d2v, paragraphs, documents
+	
+
+	def getSimilarityMapBetweenSentencesOfParagraphs(self, p1, p2):
+		sentences = p1 + p2
+		sentence_words = self.tokenize_sentences(sentences)
+
+		sent_indexes = {}
+		for i, s in enumerate(p1):
+			sent_indexes[s] = i
+		for i, s in enumerate(p2):
+			sent_indexes[s] = i
+
+		sentence_similarities = []
+		for j in range(0,  len(p1)):
+			sims = []
+			s1 = self.d2v.infer_vector(sentence_words[j], epochs=self.infer_epochs)
+			for k in range(len(p1), len(p1)+len(p2)):
+				s2 = self.d2v.infer_vector(sentence_words[k], epochs=self.infer_epochs)
+				sim = 1 - spatial.distance.cosine(s1, s2)
+				
+				sims.append(sim)
+			sentence_similarities.append(sims)
+
+		return sentence_similarities, sent_indexes
+	
+	def tokenize_paragraphs(self, paragraph_list):
+		word_list_par = []
+		for paragraph in paragraph_list:
+			par = []
+			for sentence in paragraph:
+				for token in word_tokenize(sentence.lower()):
+					if token not in self.stoplist:
+						par.append(token)
+			word_list_par.append(par)
+		return word_list_par
+
+	def tokenize_sentences(self, sentence_list):
+		word_list_sent = []
+		for sentence in sentence_list:
+			word_list_sent.append([i for i in word_tokenize(sentence.lower()) if i not in self.stoplist])
+		return word_list_sent
+
+	def getSimilarityMapBetweenParagraphsOfDocuments(self, p1s=[], p2s=[]):
+		for element in p1s[0:5]:
+			par = ''
+			for sent in element:
+				par+= sent + ' ' 
+		paragraph_words = self.tokenize_paragraphs(p1s)+self.tokenize_paragraphs(p2s)
+		paragraph_similarities = []
+		for j in range(0,  len(p1s)):
+			sims = []
+			s1 = self.d2v.infer_vector(paragraph_words[j], epochs=self.infer_epochs)
+			for k in range(len(p1s), len(p1s)+len(p2s)):
+				s2 = self.d2v.infer_vector(paragraph_words[k], epochs=self.infer_epochs)
+				sim = 1 - spatial.distance.cosine(s1, s2)
+				sims.append(sim)
+			paragraph_similarities.append(sims)
+		
+		self.paragraph_similarities = paragraph_similarities
+		return paragraph_similarities
+
+	def getTextSimilarity(self, buffer1, buffer2):
+
+		vec1 = [i for i in word_tokenize(buffer1.lower()) if i not in self.stoplist]
+		vec2 = [i for i in word_tokenize(buffer2.lower()) if i not in self.stoplist]
+
+
+		s1 = self.d2v.infer_vector(vec1, epochs=self.infer_epochs)
+		s2 = self.d2v.infer_vector(vec2, epochs=self.infer_epochs)
+
+		similarity = 1 - spatial.distance.cosine(s1, s2)
+		
+		return similarity
+	

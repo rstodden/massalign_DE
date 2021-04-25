@@ -82,7 +82,7 @@ class VicinityDrivenParagraphAligner(ParagraphAligner):
 		while currXY[0]<sizep1-1 or currXY[1]<sizep2-1:
 			nextXY, nextXYsim = self.getNextAlignment(currXY, paragraph_similarities)
 			if nextXY[0]==sizep1-1 and nextXY[1]==sizep2-1:
-				if nextXYsim>=0.3:
+				if nextXYsim>= self.acceptable_similarity:
 					path.append(nextXY)
 			else:
 				path.append(nextXY)
@@ -226,8 +226,6 @@ class VicinityDrivenParagraphAligner(ParagraphAligner):
 			for sentence in paragraphs[index]:
 				text.append(sentence.strip())
 		return text
-
-####################################################################################################################################################
 			
 class VicinityDrivenSentenceAligner(SentenceAligner):
 	"""
@@ -465,7 +463,7 @@ class VicinityDrivenSentenceAligner(SentenceAligner):
 			if (sizec-1, sizes-1) in visited:
 				reached_end = True
 			else:
-				if currpos[0]<sizec and currpos[1]<sizes and matrix[currpos[0],currpos[1]]>=self.acceptable_similarity and matrix[currpos[0],currpos[1]]<1.1:
+				if currpos[0]<sizec and currpos[1]<sizes and matrix[currpos[0], currpos[1]]>=self.acceptable_similarity and matrix[currpos[0],currpos[1]]<1.1:
 					if currpos[0]>=startpos[0] and currpos[1]>=startpos[1]:
 						found = True
 			visited.add((currpos[0], currpos[1]))
@@ -544,7 +542,7 @@ class VicinityDrivenSentenceAligner(SentenceAligner):
 		sizes = len(p2)
 		maxsize = np.max([sizec, sizes])
 		final_matrix = np.zeros((maxsize+1, maxsize+1))
-		
+
 		#Fill regularized search matrix:
 		for i in range(sizec, maxsize+1):
 			for j in range(0, maxsize+1):
@@ -602,4 +600,467 @@ class VicinityDrivenSentenceAligner(SentenceAligner):
 			sentence += p[index] + ' '
 			
 		#Return resulting sentence:
+		return sentence.strip()
+
+
+class ExpandingAlingmentParagraphAligner(ParagraphAligner):
+	"""
+	Paragraph-level alignment algorithm to be used with the Doc2Vec language model.
+	Inspired by the algorithm proposed in:
+	Gustavo H. Paetzold and Lucia Specia. **Vicinity-Driven Paragraph and Sentence Alignment for Comparable Corpora**. *arXiv preprint arXiv:1612.04113* (2016).
+
+	More information can be found in:
+	"Parallel Text Alignment and Monolingual Parallel Corpus Creation from Philosophical Texts for Text Simplification". Stefan Paun.
+	"""
+
+	def __init__(self, similarity_model, certain_threshold = 0.95, hard_threshold = 0.5, soft_threshold = 0.25, slack=0.005):
+		self.vicinity = set([(2,1),(1,2)]) 
+		self.hard_threshold = hard_threshold
+		self.soft_threshold = soft_threshold
+		self.certain_threshold = certain_threshold
+		self.similarity_model = similarity_model
+		self.paragraph_similarities = None
+		self.paragraphs = None
+		self.slack = slack
+		
+	def updateParagraphSimilarityMatrix(self, p1s=[], p2s=[]):
+		self.paragraph_similarities = self.similarity_model.getSimilarityMapBetweenParagraphsOfDocuments(p1s, p2s)
+
+	def getParagraphSimilarityMatrix(self):
+		return self.paragraph_similarities
+
+	def alignParagraphsFromDocuments(self, p1s=[], p2s=[]):
+		self.paragraphs = (p1s, p2s)
+		self.updateParagraphSimilarityMatrix(p1s, p2s)
+		alignment_path = self.getParagraphAlignmentPath(p1s, p2s)
+		aligned_paragraphs = self.getActualAlignedParagraphs(p1s, p2s, alignment_path)
+		return alignment_path, aligned_paragraphs
+		
+	def getParagraphAlignmentPath(self, p1s, p2s):
+		sizep1 = len(p1s)
+		sizep2 = len(p2s)
+		
+		path = []
+		currXY = (-1, -1)
+		
+		while currXY[0]<sizep1-1 or currXY[1]<sizep2-1:
+			nextXY, nextXYsim = self.getNextAlignment(currXY)	
+			if nextXYsim >= self.hard_threshold:
+				for element in nextXY:
+					path.append(element)
+			currXY = nextXY[-1]
+
+		for j, node in enumerate(path):
+			path[j] = [[node[0]],[node[1]]]
+
+		compact_path = []
+		while len(path)>0:
+			top = path[0]
+			if len(path)==1:
+				compact_path.append(top)
+				path.pop(0)
+			else:
+				next = path[1]
+				if top[0]==next[0]:
+					for al in next[1]:
+						top[1].append(al)
+					path.pop(1)
+				elif top[1]==next[1]:
+					for al in next[0]:
+						top[0].append(al)
+					path.pop(1)
+				else:
+					compact_path.append(top)
+					path.pop(0)
+		
+		return compact_path
+		
+	def getNextAlignment(self, currXY):
+		v2 = {}
+		for pos in self.vicinity:
+			candXY = (currXY[0]+pos[0], currXY[1]+pos[1])
+			sim = -1
+			try:
+				sim = self.paragraph_similarities[candXY[0]][candXY[1]]
+				
+			except Exception:
+				pass
+			v2[candXY] = sim
+		
+		candXY = (currXY[0]+1, currXY[1]+1)
+		try:	
+			candXY_sim = self.paragraph_similarities[candXY[0]][candXY[1]]
+		except Exception:
+			candXY_sim = -1
+		
+		if candXY_sim >= self.soft_threshold:
+			if candXY_sim >= self.certain_threshold - self.slack:
+				return [candXY], candXY_sim
+			path, newXY_sim = self.checkCandidate(candXY, candXY_sim)
+			if newXY_sim >= self.hard_threshold or newXY_sim == -1:
+				return path, newXY_sim
+
+		if np.max(v2.values()) >= self.soft_threshold:
+			if np.max(v2.values()) >= self.certain_threshold-self.slack:
+				path = [v2.keys()[v2.values().index(np.max(v2.values()))]]
+				newXY_sim = np.max(v2.values())
+				return path, newXY_sim
+			new_cands = dict()
+			for element in v2.keys():
+				if (v2[element] >= self.soft_threshold): 
+					path, candXY_sim = self.checkCandidate(element, v2[element])
+					new_cands[candXY_sim] = path
+			newXY_sim = max(new_cands.keys())
+			path = new_cands[newXY_sim]
+			if newXY_sim >= self.hard_threshold or newXY_sim == -1:
+				return path, newXY_sim	
+
+		path, newXY_sim = self.getNextSynchronizer(candXY, candXY_sim)
+		return path, newXY_sim
+
+	def join_sent_to_par(self, paragraph):
+		par = ''
+		for element in paragraph:
+			par += ' ' + str(element)
+		return par.strip()
+
+	def checkCandidate(self, candXY, candXY_sim):
+
+		if candXY_sim >= self.certain_threshold-self.slack:
+			return [candXY], candXY_sim
+
+		ok = True
+		path = [candXY]
+		lastXY = candXY
+		initXY = candXY
+		par_orig = self.join_sent_to_par(self.paragraphs[0][lastXY[0]])
+		par_simp = self.join_sent_to_par(self.paragraphs[1][lastXY[1]])
+
+		while ok:
+			if (lastXY[0] < len(self.paragraphs[0]) and lastXY[1] < len(self.paragraphs[1])):
+				try:
+					next_sim = self.paragraph_similarities[lastXY[0]+1][lastXY[1]+1]
+				except Exception:
+					next_sim = -1
+				if next_sim >= self.hard_threshold:
+					if candXY_sim >= self.hard_threshold:
+						return path, candXY_sim
+					else:
+						return [initXY], -1 
+
+				potential_candidates = dict()
+				try:
+					next_par_simp = self.join_sent_to_par(self.paragraphs[1][lastXY[1]+1])
+					last_anchor_par = self.join_sent_to_par(self.paragraphs[0][lastXY[0]]) 
+					om1_par = par_simp + ' ' + next_par_simp
+
+					sim_om1 = self.getNewParagraphSimilarity(par_orig, om1_par)
+					sim_om1_check = self.getNewParagraphSimilarity(last_anchor_par, next_par_simp)
+	
+					if sim_om1_check < self.soft_threshold: 
+						sim_om1 = -1
+					if next_sim > self.soft_threshold and (next_sim > sim_om1_check and next_sim > sim_om1): 
+						sim_om1 = -1
+				except Exception:
+					sim_om1 = -1
+
+				try:
+					next_par_orig = self.join_sent_to_par(self.paragraphs[0][lastXY[0]+1])
+					last_anchor_par = self.join_sent_to_par(self.paragraphs[1][lastXY[1]])
+					mo1_par = par_orig + ' ' + next_par_orig
+
+					sim_mo1 = self.getNewParagraphSimilarity(mo1_par, par_simp)
+					sim_mo1_check = self.getNewParagraphSimilarity(next_par_orig, last_anchor_par)
+					
+					if sim_mo1_check < self.soft_threshold:
+						sim_mo1 = -1
+					if next_sim > self.soft_threshold and (next_sim > sim_mo1_check and next_sim > sim_mo1):
+						sim_mo1 = -1
+				except Exception:
+					sim_mo1 = -1
+
+				potential_candidates[(lastXY[0], lastXY[1]+1)] = sim_om1
+				potential_candidates[(lastXY[0]+1, lastXY[1])] = sim_mo1
+				similarities_sorted = sorted(potential_candidates.keys(), key=potential_candidates.__getitem__, reverse=True)
+				best_candidate = similarities_sorted[0]
+				best_sim = potential_candidates[best_candidate]
+
+				if best_sim > candXY_sim - self.slack:
+					candXY_sim = best_sim
+					lastXY = best_candidate
+					path.append(lastXY)
+					if best_sim == sim_om1:
+						par_simp += ' ' + next_par_simp
+					elif best_sim == sim_mo1:
+						par_orig += ' ' + next_par_orig
+				else:
+					ok = False
+			else:
+				ok = False
+		return path, candXY_sim
+
+	def getNewParagraphSimilarity(self, p_orig, p_simp):
+		return self.similarity_model.getTextSimilarity(p_orig, p_simp)
+
+	def getNextSynchronizer(self, currXY, candXY_sim):
+		init_sim = candXY_sim
+		orig = currXY
+		last = (len(self.paragraphs[0]), len(self.paragraphs[1]))
+		cands = dict()
+		candXY_sim_i = -1
+		for i in range(orig[0], last[0]):
+			for j in range(orig[1], last[1]):
+				if (i!=orig[0] and j!=orig[1]) or (i!=orig[0]+1 and j!=orig[1]) or (i!=orig[0] and j!=orig[1]+1):
+					try:
+						sim_i = self.paragraph_similarities[i][j]
+					except Exception:
+						sim_i = -1
+					if sim_i >= self.soft_threshold:
+						path_i, candXY_sim_i = self.checkCandidate((i,j), sim_i)
+						if candXY_sim_i > self.hard_threshold:
+							cands[candXY_sim_i]=path_i
+							return path_i, candXY_sim_i		
+		return [(last[0]-1, last[1]-1)], init_sim
+			
+	def getActualAlignedParagraphs(self, p1s, p2s, alignment_path):
+		aligned_paragraphs = []
+		
+		for node in alignment_path:
+			c = self.getOriginalParagraph(node[0], p1s)
+			s = self.getOriginalParagraph(node[1], p2s)
+			aligned_paragraphs.append([c, s])
+		
+		return aligned_paragraphs
+				
+	def getOriginalParagraph(self, aligned_nodes, paragraphs):
+		text = []
+		for index in aligned_nodes:
+			for sentence in paragraphs[index]:
+				text.append(sentence.strip())
+		return text
+
+
+
+class ExpandingAlingmentSentenceAligner(SentenceAligner):
+	"""
+	Sentence-level alignment algorithm to be used with the Doc2Vec language model.
+	Inspired by the algorithm proposed in:
+	Gustavo H. Paetzold and Lucia Specia. **Vicinity-Driven Paragraph and Sentence Alignment for Comparable Corpora**. *arXiv preprint arXiv:1612.04113* (2016).
+	
+	More information can be found in:
+	"Parallel Text Alignment and Monolingual Parallel Corpus Creation from Philosophical Texts for Text Simplification". Stefan Paun.
+
+	"""
+	def __init__(self, similarity_model, certain_threshold = 0.85, hard_threshold = 0.6, soft_threshold = 0.3, slack = 0.05):
+		self.vicinity = set([(2,1),(1,2)]) 
+		self.hard_threshold = hard_threshold
+		self.soft_threshold = soft_threshold
+		self.certain_threshold = certain_threshold
+		self.similarity_model = similarity_model
+		self.sentence_similaritis = None
+		self.paragraphs = None
+		self.slack = slack
+
+	def updateSentenceSimilarityMatrix(self, p1s=[], p2s=[]):
+		self.sentence_similaritis = self.sentence_similaritis, sentences_indexes = self.similarity_model.getSimilarityMapBetweenSentencesOfParagraphs(p1s, p2s)
+
+	def getSentenceSImilarityMatrix(self):
+		return self.sentence_similaritis	
+		
+	def alignSentencesFromParagraphs(self, p1s=[], p2s=[]):
+		self.sentences = (p1s, p2s)
+		self.updateSentenceSimilarityMatrix(p1s, p2s)
+		alignment_path = self.getSentenceAlignmentPath(p1s, p2s)
+		aligned_sentences = self.getActualAlignedSentences(p1s, p2s, alignment_path)
+
+		return alignment_path, aligned_sentences
+		
+	def getSentenceAlignmentPath(self, p1s, p2s):
+		sizep1 = len(p1s)
+		sizep2 = len(p2s)
+
+		path = []
+		currXY = (-1, -1)
+
+		while currXY[0]<sizep1-1 or currXY[1]<sizep2-1:
+			nextXY, nextXYsim = self.getNextAlignment(currXY)
+
+			if nextXYsim >= self.hard_threshold:
+				for element in nextXY:
+					path.append(element)
+			currXY = nextXY[-1]
+
+
+		for j, node in enumerate(path):
+			path[j] = [[node[0]],[node[1]]]
+	
+		compact_path = []
+		while len(path)>0:
+			top = path[0]
+			if len(path)==1:
+				compact_path.append(top)
+				path.pop(0)
+			else:
+				next = path[1]
+				if top[0]==next[0]:
+					for al in next[1]:
+						top[1].append(al)
+					path.pop(1)
+				elif top[1]==next[1]:
+					for al in next[0]:
+						top[0].append(al)
+					path.pop(1)
+				else:
+					compact_path.append(top)
+					path.pop(0)
+		
+		return compact_path
+	
+	def getNextAlignment(self, currXY):
+		v2 = {}
+		for pos in self.vicinity:
+			candXY = (currXY[0]+pos[0], currXY[1]+pos[1])
+			sim = -1
+			try:
+				sim = self.sentence_similaritis[candXY[0]][candXY[1]]
+				
+			except Exception:
+				pass
+			v2[candXY] = sim
+		
+		candXY = (currXY[0]+1, currXY[1]+1)
+		try:	
+			candXY_sim = self.sentence_similaritis[candXY[0]][candXY[1]]
+		except Exception:
+			candXY_sim = -1
+
+		
+		if candXY_sim >= self.soft_threshold:
+			if candXY_sim >= self.certain_threshold-self.slack:
+				return [candXY], candXY_sim
+			path, newXY_sim = self.expandCandidate(candXY, candXY_sim)
+			if newXY_sim >= self.hard_threshold or newXY_sim == -1:
+				return path, newXY_sim
+
+		if np.max(v2.values()) >= self.soft_threshold:
+			if np.max(v2.values()) >= self.certain_threshold-self.slack:
+				path = [v2.keys()[v2.values().index(np.max(v2.values()))]]
+				newXY_sim = np.max(v2.values())
+				return path, newXY_sim
+			new_cands = dict()
+			for element in v2.keys():
+				if (v2[element] >= self.soft_threshold): 
+					path, candXY_sim = self.expandCandidate(element, v2[element])
+					new_cands[candXY_sim] = path
+			newXY_sim = max(new_cands.keys())
+			path = new_cands[newXY_sim]
+
+			if newXY_sim >= self.hard_threshold or newXY_sim == -1:
+				return path, newXY_sim	
+		
+		path, newXY_sim = self.getNextSynchronizer(candXY, candXY_sim)
+		return path, newXY_sim
+	
+	def expandCandidate(self, candXY, candXY_sim):
+		if candXY_sim >= self.certain_threshold - self.slack:
+			return [candXY], candXY_sim
+		ok = True
+		path = [candXY]
+		lastXY = candXY
+		initXY = candXY
+		sent_orig = str(self.sentences[0][lastXY[0]])
+		sent_simp = str(self.sentences[1][lastXY[1]])
+		while ok:
+			if (lastXY[0] < len(self.sentences[0]) and lastXY[1] < len(self.sentences[1])):
+
+				try:
+					next_sim = self.sentence_similaritis[lastXY[0]+1][lastXY[1]+1]
+				except Exception:
+					next_sim = -1
+				if next_sim >= self.hard_threshold:	
+					if candXY_sim >= self.hard_threshold:
+						return path, candXY_sim
+					else:
+					 	return [initXY], -1
+					
+				potential_candidates = dict()
+				try:
+					sim_om1 = self.getNewSentenceSimilarity(sent_orig, sent_simp+ ' ' +str(self.sentences[1][lastXY[1]+1]))
+					sim_om1_check = self.getNewSentenceSimilarity(str(self.sentences[0][lastXY[0]]), str(self.sentences[1][lastXY[1]+1]))
+					if sim_om1_check < self.soft_threshold:
+						sim_om1 = -1
+					if next_sim > self.soft_threshold and (next_sim > sim_om1_check and next_sim > sim_om1):
+						sim_om1 = -1
+				except Exception:
+					sim_om1 = -1
+				
+				try:
+					sim_mo1 = self.getNewSentenceSimilarity(sent_orig+ ' ' +str(self.sentences[0][lastXY[0]+1]), sent_simp)
+					sim_mo1_check = self.getNewSentenceSimilarity(str(self.sentences[0][lastXY[0]+1]), str(self.sentences[1][lastXY[1]]))
+					if sim_mo1_check < self.soft_threshold:	
+						sim_mo1 = -1
+					if next_sim > self.soft_threshold and (next_sim > sim_mo1_check and next_sim > sim_mo1):
+						sim_mo1 = -1
+				except Exception:
+					sim_mo1 = -1
+
+				potential_candidates[(lastXY[0], lastXY[1]+1)] = sim_om1
+				potential_candidates[(lastXY[0]+1, lastXY[1])] = sim_mo1
+				similarities_sorted = sorted(potential_candidates.keys(), key=potential_candidates.__getitem__, reverse=True)
+				best_candidate = similarities_sorted[0]
+				best_sim = potential_candidates[best_candidate]
+
+				if best_sim > candXY_sim - self.slack:
+					candXY_sim = best_sim
+					lastXY = best_candidate
+					path.append(lastXY)
+					if best_sim == sim_om1:
+						sent_simp += ' ' + str(self.sentences[1][lastXY[1]])
+					elif best_sim == sim_mo1:
+						sent_orig += ' ' + str(self.sentences[0][lastXY[0]])
+
+				else:
+					ok = False
+			else:
+				ok = False
+		return path, candXY_sim
+
+	def getNewSentenceSimilarity(self, p_orig, p_simp):
+		return self.similarity_model.getTextSimilarity(p_orig, p_simp)
+
+	def getNextSynchronizer(self, currXY, candXY_sim):
+		init_sim = candXY_sim
+		orig = currXY
+		last = (len(self.sentences[0]), len(self.sentences[1]))
+	
+		candXY_sim_i = -1
+
+		for i in range(orig[0], last[0]):
+			for j in range(orig[1], last[1]):
+				if (i!=orig[0] and j!=orig[1]) or (i!=orig[0]+1 and j!=orig[1]) or (i!=orig[0] and j!=orig[1]+1):
+					try:
+						sim_i = self.sentence_similaritis[i][j]
+					except Exception:
+						sim_i = -1
+					if sim_i >= self.soft_threshold:
+						path_i, candXY_sim_i = self.expandCandidate((i,j), sim_i)
+						if candXY_sim_i > self.hard_threshold:
+							return path_i, candXY_sim_i				
+		return [(last[0]-1, last[1]-1)], init_sim
+			
+	def getActualAlignedSentences(self, p1, p2, alignment_path):
+		aligned_sentences = []
+		for node in alignment_path:
+			if len(node)>1:
+				s1 = self.getOriginalSentence(node[0], p1)
+				s2 = self.getOriginalSentence(node[1], p2)
+				aligned_sentences.append([s1, s2])
+		return aligned_sentences
+	
+	def getOriginalSentence(self, indexes, p):
+		sentence = ''
+		
+		for index in indexes:
+			sentence += p[index] + ' '
+
 		return sentence.strip()

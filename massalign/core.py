@@ -1,5 +1,9 @@
 import os, gensim
 import numpy as np
+import annotators
+import aligners
+import models
+import gui
 from annotators import *
 from aligners import *
 from models import *
@@ -54,6 +58,14 @@ class MASSAligner:
 		
 		#Return found paragraphs:
 		return paragraphs
+
+	def getSimMatrixPar(self, p1s=[], p2s=[], paragraph_aligner=None):
+		paragraph_aligner.updateParagraphSimilarityMatrix(p1s, p2s)
+		return paragraph_aligner.getParagraphSimilarityMatrix()
+
+	def getSimMatrixSent(self, p1s=[], p2s=[], sentence_aligner=None):
+		sentence_aligner.updateSentenceSimilarityMatrix(p1s, p2s)
+		return sentence_aligner.getSentenceSImilarityMatrix()
 		
 	def getParagraphAlignments(self, paragraphs1=[], paragraphs2=[], paragraph_aligner=None, **kwargs):
 		"""
