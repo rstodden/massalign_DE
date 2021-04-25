@@ -47,7 +47,7 @@ python setup.py install
 
 # Examples:
 
-An example for the *ExpandingAlignment* methods can be found in /example/d2v_example.py
+An example for the *ExpandingAlignment* methods can be found in [/example/d2v_example.py](https://github.com/stefanpaun/massalign/blob/master/example/d2v_example.py)
 You can learn how to use **MASSAlign** [here](http://ghpaetzold.github.io/massalign_docs/examples.html).
 
 # Citing:
