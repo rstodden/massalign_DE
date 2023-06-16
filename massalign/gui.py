@@ -1,11 +1,9 @@
-from Tkinter import *
-import tkFont, os
+from tkinter import *
+import tkinter.font, os
 from abc import ABCMeta, abstractmethod
 
 #Base class for GUI:
-class GUI:
-
-	__metaclass__ = ABCMeta
+class GUI(metaclass=ABCMeta):
 
 	@abstractmethod
 	def displayParagraphAlignments(self):
@@ -136,7 +134,7 @@ class BasicGUI(GUI):
 		self.root.grid_columnconfigure(0, weight=1)
 		self.root.wm_title("Alignment Visualizer")
 		self.root.config(background='#FFFFFF')
-		self.root.geometry('1250x800+0+0')
+		self.root.geometry('1250x600+0+0')
 		self.root.resizable(True, True)
 
 #A canvas with dynamic size:
@@ -257,12 +255,12 @@ class DisplayFrame(Frame):
 		self.max_chars_per_line = 70
 		self.offset_between_paragraphs = 25
 		self.separation_between_lines = 8
-		self.font_size = 8
+		self.font_size = 10
 		self.marker_radius = 7
 		self.alignment_line_width = 4
 		self.word_rectangle_size = 60
 		self.label_rectangle_size = 50
-		self.font = tkFont.Font(family='Helvetica', size=self.font_size, weight='bold')
+		self.font = tkinter.font.Font(family='Helvetica', size=self.font_size, weight='bold')
 		
 		#Create main frame:
 		Frame.__init__(self, parentObject, background=background)
@@ -591,7 +589,7 @@ class DisplayFrame(Frame):
 		* *Output*:
 			* **alignment_list**: A list of alignments in Pharaoh format.
 		"""
-		if isinstance(word_alignments, basestring):
+		if isinstance(word_alignments, str):
 			alignment_list = [[[int(v)-1] for v in w.split('-')] for w in word_alignments.strip().split(' ')]
 			return alignment_list
 		else:

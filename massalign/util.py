@@ -1,5 +1,5 @@
 import codecs
-from urllib2 import urlopen
+from urllib.request import urlopen
 from nltk import word_tokenize
 
 class FileReader:

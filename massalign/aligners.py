@@ -1,17 +1,13 @@
 from abc import ABCMeta, abstractmethod
 import numpy as np
 
-class ParagraphAligner:
-
-    __metaclass__ = ABCMeta
+class ParagraphAligner(metaclass=ABCMeta):
 
     @abstractmethod
     def alignParagraphsFromDocuments(self):
         pass
 		
-class SentenceAligner:
-
-    __metaclass__ = ABCMeta
+class SentenceAligner(metaclass=ABCMeta):
 
     @abstractmethod
     def alignSentencesFromParagraphs(self):
@@ -138,7 +134,7 @@ class VicinityDrivenParagraphAligner(ParagraphAligner):
 			cands[candXY] = sim
 		
 		#Rank them according to their similarities:
-		winners = sorted(cands.keys(), key=cands.__getitem__, reverse=True)
+		winners = sorted(list(cands.keys()), key=cands.__getitem__, reverse=True)
 
 		#Check whether the first ficinity has a similar enough candidate:
 		nearest = [cands[(currXY[0]+pos[0], currXY[1]+pos[1])] for pos in self.first_vicinity]
@@ -180,7 +176,7 @@ class VicinityDrivenParagraphAligner(ParagraphAligner):
 					
 		#If there are any, get the best one:
 		if len(cands)>0:
-			closest = sorted(cands.keys(), key=cands.__getitem__)
+			closest = sorted(list(cands.keys()), key=cands.__getitem__)
 			return closest[0]
 		#Otherwise, return the last position in the alignment matrix:
 		else:
@@ -941,11 +937,11 @@ class ExpandingAlingmentSentenceAligner(SentenceAligner):
 			path, newXY_sim = self.expandCandidate(candXY, candXY_sim)
 			if newXY_sim >= self.hard_threshold or newXY_sim == -1:
 				return path, newXY_sim
-
-		if np.max(v2.values()) >= self.soft_threshold:
-			if np.max(v2.values()) >= self.certain_threshold-self.slack:
-				path = [v2.keys()[v2.values().index(np.max(v2.values()))]]
-				newXY_sim = np.max(v2.values())
+		v2_values = list(v2.values())
+		if np.max(v2_values) >= self.soft_threshold:
+			if np.max(v2_values) >= self.certain_threshold-self.slack:
+				path = [list(v2.keys())[v2_values.index(np.max(v2_values))]]
+				newXY_sim = np.max(v2_values)
 				return path, newXY_sim
 			new_cands = dict()
 			for element in v2.keys():
@@ -968,8 +964,8 @@ class ExpandingAlingmentSentenceAligner(SentenceAligner):
 		path = [candXY]
 		lastXY = candXY
 		initXY = candXY
-		sent_orig = str(self.sentences[0][lastXY[0]])
-		sent_simp = str(self.sentences[1][lastXY[1]])
+		sent_orig = str(self.sentences[0][lastXY[0]].encode("utf-8"))
+		sent_simp = str(self.sentences[1][lastXY[1]].encode("utf-8"))
 		while ok:
 			if (lastXY[0] < len(self.sentences[0]) and lastXY[1] < len(self.sentences[1])):
 

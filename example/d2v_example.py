@@ -8,9 +8,9 @@ import scipy.stats as st
 
 
 #Get files to align:
-path =  ' '
-file_name1 = ' '
-file_name2 = ' '
+path =  'sample_data/'
+file_name1 = 'test_document_complex_2.txt'
+file_name2 = 'test_document_simple_2.txt'
 
 
 file1 = path + file_name1
@@ -35,20 +35,22 @@ sentence_aligner = ExpandingAlingmentSentenceAligner(similarity_model=model)
 p1s = m.getParagraphsFromDocument(file1)
 p2s = m.getParagraphsFromDocument(file2)
 
-
-#Compute paragraph aligner thresholds based on the similarity matrix
-mat = m.getSimMatrixPar(p1s, p2s, paragraph_aligner)
-par_history = []
-for line in mat:
-        par_history.append(max(line))
-(low, high) = st.t.interval(0.95, len(par_history)-1, loc=np.mean(par_history), scale=st.sem(par_history))
-
-hard_treshold = low-statistics.stdev(par_history)
-soft_threshold = max(min(par_history),0)
-certain_threshold = high+statistics.stdev(par_history)
+# #Compute paragraph aligner thresholds based on the similarity matrix
+# mat = m.getSimMatrixPar(p1s, p2s, paragraph_aligner)
+# par_history = []
+# for line in mat:
+#         par_history.append(max(line))
+# (low, high) = st.t.interval(0.95, len(par_history)-1, loc=np.mean(par_history), scale=st.sem(par_history))
+#
+# hard_treshold = low-statistics.stdev(par_history)
+# soft_threshold = max(min(par_history),0)
+# certain_threshold = high+statistics.stdev(par_history)
 
 #Reintialize aligner with the thresholds determined earlier and align paragraphs
-paragraph_aligner = ExpandingAlingmentParagraphAligner(similarity_model=model, certain_threshold=certain_threshold, hard_threshold=hard_treshold, soft_threshold=soft_threshold)
+# paragraph_aligner = ExpandingAlingmentParagraphAligner(similarity_model=model, certain_threshold=certain_threshold, hard_threshold=hard_treshold, soft_threshold=soft_threshold)
+paragraph_aligner = VicinityDrivenParagraphAligner(similarity_model=model, acceptable_similarity=0.3)
+
+#Align paragraphs:
 alignments_par, aligned_paragraphs = m.getParagraphAlignments(p1s, p2s, paragraph_aligner)
 
 
@@ -81,17 +83,18 @@ for a in aligned_paragraphs:
         p2 = a[1]
         alignments, aligned_sentences = m.getSentenceAlignments(p1, p2, sentence_aligner)
         sentence_alignments.append((alignments, aligned_sentences))
+        print(alignments, aligned_sentences)
 
 par_tuple_list = zip(alignments_par, sentence_alignments)
 
 
-#Print aligned sentences
-for alignment, sentences in sentence_alignments:
-        for sent in zip(alignment, sentences):
-                print(sent[0])
-                print(sent[1][0])
-                print(sent[1][1])
-                print('\n')
-        print('\n\n\n')
+# #Print aligned sentences
+# for alignment, sentences in sentence_alignments:
+#         for sent in zip(alignment, sentences):
+#                 print(sent[0])
+#                 print(sent[1][0])
+#                 print(sent[1][1])
+#                 print('\n')
+#         print('\n\n\n')
 
   

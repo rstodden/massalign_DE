@@ -1,7 +1,14 @@
-# Introduction:
+# MASSalign: Alignment and Annotation for Comparable (German) Documents 
+## Introduction:
 
 This repository contains the code of the extended version of **MASSAlign**, to which a Doc2Vec language model has been added, as well as a new alignment method. 
 In addition, this repository contains a new dataset to be used for text simplification systems, which can be found in the dataset folder.
+
+** Changes in Comparison to https://github.com/stefanpaun/massalign **
+- added params.py file in which the language can be specified
+- changed to Python3 based on last commit https://github.com/schan27/massalign/tree/4474fc3b88d650a2ed29c26a27e483218d9c2f60
+- adapted to needs for alignment of German corpora
+- added an example use case for the DEplain corpus [deplain.py](example%2Fdeplain.py). To use this data, please get the DEplain corpus from https://github.com/rstodden/DEPlain. 
 
 **Dataset**
 * The dataset is composed of pairs of aligned text units retrieved from the original works of Early Modern Philosophers such as *George Berkeley*, *David Hume*, *John Locke* and *John Stuart Mill* and their simplified versions of the works obtained from and edited by [EarlyModernTexts](https://www.earlymoderntexts.com/).
@@ -30,7 +37,7 @@ These papers are evidence:
 * Gustavo H. Paetzold and Lucia Specia. **Lexical Simplification with Neural Ranking**. Proceedings of the 2017 EACL.
 * Fernando Alva-Manchego, Joachim Bingel, Gustavo H. Paetzold, Carolina Scarton and Lucia Specia. **Learning how to Simplify from Explicit Labeling of Complex-Simplified Text Pairs**. Proceedings of the 2017 IJCNLP.
 
-# Installation:
+## Installation:
 
 To install **MASSAlign**, you must:
 1. Download and unpack MASSAlign's github [repository](https://github.com/ghpaetzold/massalign/archive/master.zip).
@@ -41,16 +48,16 @@ To install **MASSAlign**, you must:
 python setup.py install
 ```
 
-# Documentation:
+## Documentation:
 
 **MASSAlign's** documentation can be found [here](http://ghpaetzold.github.io/massalign_docs).
 
-# Examples:
+## Examples:
 
 An example for the *ExpandingAlignment* methods can be found in [/example/d2v_example.py](https://github.com/stefanpaun/massalign/blob/master/example/d2v_example.py).
 You can learn how to use **MASSAlign** [here](http://ghpaetzold.github.io/massalign_docs/examples.html).
 
-# Citing:
+## Citing:
 
 If you use **MASSAlign**, please cite this paper:
 * Gustavo H. Paetzold, Fernando Alva-Manchego and Lucia Specia. **MASSAlign: Alignment and Annotation for Comparable Documents**. Proceedings of the 2017 IJCNLP.
@@ -58,6 +65,9 @@ If you use **MASSAlign**, please cite this paper:
 If you use the Doc2Vec language model or the *ExpandingAlignment* method, please cite, in addition, this paper:
 * Stefan Paun. **Parallel Text Alignment and Monolingual Parallel Corpus Creation from Philosophical Texts for Text Simplification**.
 
-# License:
+If you use the adaptation of the method for German TS corpora, please cite, in addition, this paper:
+* Regina Stodden, Momen Omar, and Laura Kallmeyer. 2023. **"DEplain: A German Parallel Corpus with Intralingual Translations into Plain Language for Sentence and Document Simplification."**. In Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics, Toronto, Canada. Association for Computational Linguistics.
+
+## License:
 
 **MASSAlign** is distributed under the LGPL v3.0 license.

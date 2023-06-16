@@ -1,13 +1,9 @@
 import os, gensim
 import numpy as np
-import annotators
-import aligners
-import models
-import gui
-from annotators import *
-from aligners import *
-from models import *
-from gui import *
+from .annotators import *
+from .aligners import *
+from .models import *
+from .gui import *
 
 class MASSAligner:
 	"""

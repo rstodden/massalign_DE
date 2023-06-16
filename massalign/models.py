@@ -2,6 +2,7 @@ from abc import ABCMeta, abstractmethod
 import numpy as np
 import gensim
 from massalign.util import FileReader
+from massalign.params import LANGUAGE
 
 
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
@@ -11,9 +12,7 @@ from nltk import word_tokenize
 import string
 
 
-class SimilarityModel:
-
-	__metaclass__ = ABCMeta
+class SimilarityModel(metaclass=ABCMeta):
 
 	@abstractmethod
 	def getSimilarityMapBetweenParagraphsOfDocuments(self, ps1, ps2):
@@ -29,12 +28,10 @@ class TFIDFModel(SimilarityModel):
 			
 	* *Parameters*:
 		* **input_files**: A set of file paths containing text from which to extract TFIDF weight values.
-		* **stop_list_file**: A path to a file containing a list of stop-words.
 	"""
 
-	def __init__(self, input_files=[], stop_list_file=None):
-		reader = FileReader(stop_list_file)
-		self.stoplist = set([line.strip() for line in reader.getRawText().split('\n')])
+	def __init__(self, input_files=[]):
+		self.stoplist = stopwords.words(LANGUAGE) + list(string.punctuation)
 		self.tfidf, self.dictionary = self.getTFIDFmodel(input_files)
 		
 	def getTFIDFmodel(self, input_files=[]):
@@ -128,7 +125,7 @@ class TFIDFModel(SimilarityModel):
 		#Get similarity querying framework:
 		texts = [[word for word in sentence.split(' ') if word not in self.stoplist] for sentence in sentences]
 		corpus = [self.dictionary.doc2bow(text) for text in texts]
-		index = gensim.similarities.MatrixSimilarity(self.tfidf[corpus])
+		index = gensim.similarities.MatrixSimilarity(self.tfidf[corpus], num_features=len(self.dictionary))
 		
 		#Create similarity matrix:
 		sentence_similarities = []
@@ -155,7 +152,7 @@ class TFIDFModel(SimilarityModel):
 		corpus = [vec1, vec2]
 		
 		#Get similarity matrix from bag-of-words model:
-		index = gensim.similarities.MatrixSimilarity(self.tfidf[corpus])
+		index = gensim.similarities.MatrixSimilarity(self.tfidf[corpus], num_features=len(self.dictionary))
 		
 		#Return the similarity between the vectors:
 		sims = index[self.tfidf[vec1]]
@@ -196,7 +193,7 @@ class TFIDFModel(SimilarityModel):
 
 class W2VModel(SimilarityModel):
 	def __init__(self, input_files=[]):
-		self.stoplist = stopwords.words('english') + list(string.punctuation)
+		self.stoplist = stopwords.words(LANGUAGE) + list(string.punctuation)
 		self.w2v, self.dictionary = self.getW2Vmodel(input_files)
 		self.index2word_set = set(self.w2v.wv.index2word)
 		
@@ -238,6 +235,8 @@ class W2VModel(SimilarityModel):
 				for sent1 in p1:
 					for sent2 in p2:
 						values.append(sentence_similarities[sentence_indexes[sent1]][sentence_indexes[sent2]])
+				if not values:
+					values = [0.0]
 				paragraph_similarities[i][j] = np.max(values)
 
 		return paragraph_similarities
@@ -305,11 +304,10 @@ class D2VModel(SimilarityModel):
 			
 	* *Parameters*:
 		* **input_files**: A set of file paths containing text from which to extract TFIDF weight values.
-		* **stop_list_file**: A path to a file containing a list of stop-words.
 	"""
 
 	def __init__(self, input_files=[], vector_size=100, window_size=10, min_count=2, epochs=200, infer_epochs=200, dm=0):
-		self.stoplist = stopwords.words('english') + list(string.punctuation)
+		self.stoplist = stopwords.words(LANGUAGE) + list(string.punctuation)
 		self.vector_size = vector_size
 		self.window_size = window_size
 		self.min_count = min_count
